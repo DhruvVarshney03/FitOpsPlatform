@@ -4,8 +4,17 @@ version = "0.1.0"
 description = "Local-first workout MLOps platform"
 requires-python = ">=3.11"
 dependencies = [
+  "boto3==1.35.36",
   "openpyxl==3.1.5",
+  "psycopg[binary]>=3.3.0",
 ]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.optional-dependencies]
 dev = [

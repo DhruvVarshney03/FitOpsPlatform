@@ -1,0 +1,8 @@
+# LocalStack runs from Docker Compose on the host.
+localstack_endpoint = "http://localhost:4566"
+raw_bucket_name     = "fitops-raw"
+
+# Used after creating the Kind cluster.
+kube_context        = "kind-fitops"
+kubernetes_namespace = "fitops"
+enable_kubernetes    = false

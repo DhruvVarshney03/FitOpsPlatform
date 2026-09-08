@@ -19,12 +19,14 @@ Historical periods retain their original label. Explicit ranges can produce star
 ## Quick Start
 
 ```bash
-# Run the focused tests
-cd fitops-engine
-PYTHONPATH=src .venv/bin/python -m pytest -q
+# Install locked dependencies
+uv sync --extra dev
+
+# Run the test suite
+uv run pytest -q
 
 # Inspect the workbook normalization
-PYTHONPATH=src .venv/bin/python - <<'PY'
+uv run python - <<'PY'
 from fitops.workbook import load_workbook_contents
 
 contents = load_workbook_contents("Gym_Training_Log_Cleaned.xlsx")
@@ -32,9 +34,9 @@ print(len(contents.workouts), "workout rows")
 print(len(contents.exercise_library), "library entries")
 PY
 
-# The virtual environment can be created with:
-# python -m venv .venv
-# .venv/bin/pip install -e '.[dev]'
+# Export normalized records locally for review
+uv run python -c \
+  'from fitops.export import export_normalized_json; export_normalized_json("Gym_Training_Log_Cleaned.xlsx", "normalized-data/workbook-normalized.json")'
 ```
 
 ## Project Goals
@@ -52,13 +54,69 @@ The normalized model has one workout-entry record per `Master Log` row and one p
 
 The workbook currently contains 1,173 master rows, 58 explicit skipped rows, and 111 populated exercise-library entries. The current `Exercise Library` tab is authoritative; the importer reads and preserves those 111 entries dynamically.
 
+The local export at `normalized-data/workbook-normalized.json` uses schema `1.1` and contains the normalized workout entries, every original set cell (including blank and note-only cells), flattened parsed set attempts, exercise library, cleanup notes, source provenance, and raw set-cell values. It is generated from the workbook and excluded from GitHub along with the workbook itself.
+
+## Local Storage
+
+Docker Compose provides PostgreSQL on `localhost:5432` and LocalStack S3 on `localhost:4566`. Start the services with:
+
+```bash
+docker compose up -d
+```
+
+After installing the project dependencies with `uv sync --extra dev`, import the local workbook with:
+
+```bash
+uv run python scripts/import_to_storage.py Gym_Training_Log_Cleaned.xlsx
+```
+
+The importer stores the raw workbook and normalized JSON under an import-specific S3 prefix, and inserts the structured records into PostgreSQL. Source checksums make repeated imports idempotent. The workbook and normalized output remain local and are excluded from GitHub.
+
+## Terraform
+
+The `terraform/` module owns the LocalStack `fitops-raw` S3 bucket and the Kubernetes `fitops` namespace. PostgreSQL remains owned by Docker Compose because its schema is initialized from `storage/schema.sql`.
+
+Validate the module with:
+
+```bash
+terraform -chdir=terraform init
+terraform -chdir=terraform fmt -check
+terraform -chdir=terraform validate
+```
+
+If you are already inside the Terraform directory, the equivalent commands are:
+
+```bash
+cd terraform
+terraform init
+terraform fmt -check
+terraform validate
+```
+
+After Docker Compose is running, apply the LocalStack resources with:
+
+```bash
+terraform -chdir=terraform import aws_s3_bucket.raw fitops-raw  # one-time, if the bucket already exists
+terraform -chdir=terraform apply -auto-approve
+```
+
+Kubernetes provisioning is disabled by default. Once Kind is available, enable it explicitly:
+
+```bash
+terraform -chdir=terraform apply -var='enable_kubernetes=true' -auto-approve
+```
+
 ## Repository Layout
 
-- `fitops-engine/src/fitops/importer.py` - deterministic set and period parsing
-- `fitops-engine/src/fitops/workbook.py` - cleaned workbook normalization
-- `fitops-engine/tests/` - focused parser tests
-- `fitops-engine/Gym_Training_Log_Cleaned.xlsx` - preserved historical source workbook
-- `bin/act` - GitHub Actions local testing utility
+- `src/fitops/importer.py` - deterministic set and period parsing
+- `src/fitops/workbook.py` - cleaned workbook normalization
+- `src/fitops/export.py` - reviewable JSON export
+- `src/fitops/storage.py` - PostgreSQL and LocalStack adapters
+- `scripts/import_to_storage.py` - end-to-end local import command
+- `storage/schema.sql` - PostgreSQL schema
+- `terraform/` - LocalStack and Kubernetes IaC
+- `tests/` - parser, export, and storage tests
+- `uv.lock` - locked Python dependencies
 
 ## Development
 
@@ -72,4 +130,4 @@ See [AGENTS.md](AGENTS.md) for detailed development guidelines and conventions.
 
 ---
 
-**Last Updated**: 2026-09-03
+**Last Updated**: 2026-09-07
